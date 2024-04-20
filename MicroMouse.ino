@@ -118,9 +118,10 @@ void setup()
 {
   delay(100);
   Serial.begin(115200);
+  Serial.println("henlo");
   Wire.begin();
 
-  startBluetooth();
+  // startBluetooth();
   startLidars();
 
   gyro.begin();
