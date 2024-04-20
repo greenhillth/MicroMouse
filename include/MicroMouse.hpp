@@ -124,7 +124,14 @@ public:
     void explore_maze();
 
     void run();
+    void debugMenu();
     void ASCIItoMotionPlan();
+
+private:
+    bool lidarDiagnostics();
+    bool imuDiagnostics();
+    bool encoderDiagnostics();
+    bool motorDiagnostics();
 };
 
 bool withinThreshold(float const distance);

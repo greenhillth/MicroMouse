@@ -126,6 +126,7 @@ void setup()
 
   gyro.begin();
   gyro.reset();
+  Robot->debugMenu();
 }
 
 void loop()

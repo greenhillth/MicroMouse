@@ -209,7 +209,8 @@ void MicroMouse::printLidars()
     Serial.print("\t");
     Serial.print(lidarReading(RIGHT));
     Serial.print("\t");
-    Serial.println(lidarReading(FRONT));
+    Serial.print(lidarReading(FRONT));
+    Serial.println('\r');
 }
 
 // calculate PID signal based on current pos
@@ -733,6 +734,118 @@ void MicroMouse::run()
         // Serial.print("Yaw: ");
         // Serial.println(gyro->read());
     }
+}
+
+//
+void MicroMouse::debugMenu()
+{
+    bool exit_flag = false;
+    String title = "Initialised debug menu. Please select sensor you'd like to check:";
+    String menu = "1: Lidars\n"
+                  "2: IMU\n"
+                  "3. Encoders\n"
+                  "4. Motors\n";
+    Serial.println(title);
+    Serial.println(menu);
+    while (!exit_flag)
+    {
+        while (!(Serial.available() > 0))
+        {
+            delay(15);
+        }
+        String input = Serial.readString();
+        if (input.equalsIgnoreCase("e"))
+        {
+            exit_flag = true;
+        }
+        else if (input == "1" || input.equalsIgnoreCase("lidar") || input.equalsIgnoreCase("lidars"))
+        {
+            Serial.println("Lidar selected. Printing lidar information: (q to quit)");
+
+            while (lidarDiagnostics())
+                ;
+            Serial.readString();
+            Serial.println("Select a new diagnostic target, or press E to exit");
+        }
+        else if (input == "2" || input.equalsIgnoreCase("imu") || input.equalsIgnoreCase("imus"))
+        {
+            Serial.println("IMU selected. Printing IMU information: (press any key to interrupt)");
+
+            while (imuDiagnostics())
+                ;
+            Serial.readString();
+            Serial.println("Select a new diagnostic target, or press E to exit");
+        }
+        else if (input == "3" || input.equalsIgnoreCase("encoder") || input.equalsIgnoreCase("encoders"))
+        {
+            Serial.println("Encoders selected. Printing encoder information: (press any key to interrupt)");
+
+            while (encoderDiagnostics())
+                ;
+            Serial.readString();
+            Serial.println("Select a new diagnostic target, or press E to exit");
+        }
+        else if (input == "4" || input.equalsIgnoreCase("motor") || input.equalsIgnoreCase("motors"))
+        {
+            Serial.println("Motors selected. Printing motor information: (press any key to interrupt)");
+
+            while (encoderDiagnostics())
+                ;
+            Serial.println("Select a new diagnostic target, or press E to exit");
+        }
+        else
+        {
+            Serial.println("Invalid input. Please select a valid option from the menu, or press E to exit:");
+        }
+
+        if (exit_flag)
+        {
+            Serial.println("Exiting...");
+        }
+        else
+        {
+
+            Serial.println(menu);
+        }
+    }
+}
+
+bool MicroMouse::lidarDiagnostics()
+{
+    printLidars();
+    return (Serial.available() == 0);
+}
+
+bool MicroMouse::imuDiagnostics()
+{
+    gyro->read();
+
+    Serial.print("IMU Readings (Roll, Pitch, Yaw): ");
+    Serial.print(gyro->roll());
+    Serial.print("\t");
+    Serial.print(gyro->pitch());
+    Serial.print("\t");
+    Serial.print(gyro->yaw());
+    Serial.println('\r');
+
+    return (Serial.available() == 0);
+}
+
+bool MicroMouse::encoderDiagnostics()
+{
+    Serial.print("Encoder Readings (Left, Right): ");
+    Serial.print(leftEncoderPos());
+    Serial.print("\t");
+    Serial.print(rightEncoderPos());
+    Serial.println('\r');
+
+    return (Serial.available() == 0);
+}
+
+bool MicroMouse::motorDiagnostics()
+{
+    delay(100);
+    return false;
 }
 
 // calibrate the bot based on expected distance to walls
