@@ -8,6 +8,7 @@ namespace mtrn3100
     class PIDController
     {
     public:
+        float prev_signal = 0;
         PIDController(float kp = 1, float ki = 1, float kd = 1, float lower_limit = 0, float basePWM = 0, float upper_limit = 255,
                       float deadband = 1)
             : kp(kp), ki(ki), kd(kd), lower_limit(lower_limit), basePWM(basePWM), upper_limit(upper_limit), deadband(deadband) {}
@@ -59,6 +60,7 @@ namespace mtrn3100
             prev_integral = conditional_integral;
             prev_error = error;
             prev_input = input;
+            prev_signal = signal;
             return signal;
         }
 

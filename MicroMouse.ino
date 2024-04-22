@@ -43,10 +43,12 @@ void readLeftEncoder() { l_encoder.readEncoder(); }
 void readRightEncoder() { r_encoder.readEncoder(); }
 
 // Set up PIDs.
-mtrn3100::PIDController pidLinearL(10, 50, 0, 0.0005, 60, 255, 1);
-mtrn3100::PIDController pidLinearR(10, 50, 0, 0.0005, 60, 255, 1);
+mtrn3100::PIDController pidLinearL(10, 100, 0, 0.0005, 60, 255, 1);
+mtrn3100::PIDController pidLinearR(10, 100, 0, 0.0005, 60, 255, 1);
 mtrn3100::PIDController pidRotationalL(.25, 0, 0, 55, 0, 90, .1);
 mtrn3100::PIDController pidRotationalR(.25, 0, 0, 55, 0, 90, .1);
+
+mtrn3100::PIDController compPID(20, 1.5, 0.01, 0.0, 0, 20, 0);
 
 MotorAssembly leftAssembly(&l_motor, &l_encoder, pidLinearL, pidRotationalL);
 MotorAssembly rightAssembly(&r_motor, &r_encoder, pidLinearR, pidRotationalR);
@@ -112,7 +114,7 @@ void startBluetooth()
   Serial3.println("starting");
 }
 
-MicroMouse *Robot = new MicroMouse(leftAssembly, rightAssembly, lidars, &gyro);
+MicroMouse *Robot = new MicroMouse(leftAssembly, rightAssembly, lidars, &gyro, compPID);
 
 void setup()
 {
@@ -122,7 +124,7 @@ void setup()
   Wire.begin();
 
   // startBluetooth();
-  // startLidars();
+  startLidars();
 
   gyro.begin();
   gyro.reset();

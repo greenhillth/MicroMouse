@@ -146,9 +146,9 @@ Coords Coords::update(mtrn3100::GYRO &gyro)
 /**
  * @brief Constructor which initialises a robot instance.
  */
-MicroMouse::MicroMouse(MotorAssembly &leftDrive, MotorAssembly &rightDrive, lidarObj &lidars, mtrn3100::GYRO *gyro)
+MicroMouse::MicroMouse(MotorAssembly &leftDrive, MotorAssembly &rightDrive, lidarObj &lidars, mtrn3100::GYRO *gyro, mtrn3100::PIDController &compPID)
     : leftDrive(leftDrive), rightDrive(rightDrive), lidars(lidars), gyro(gyro), encoderTarget({0.0, 0.0}),
-      mCurrentCommand(Command()), globalCoords(Coords()), solveMode(INIT)
+      mCurrentCommand(Command()), globalCoords(Coords()), solveMode(INIT), motorComp(compPID)
 {
     mDataBuffer = String();
     mSendBuffer = String();
@@ -300,15 +300,28 @@ mtrn3100::Tuple<float, float> MicroMouse::calculatePWM(int cycle)
     if (cycle == 0)
     {
         gyro->reset();
+        encoderInit[LEFT] = leftEncoderPos();
+        encoderInit[RIGHT] = rightEncoderPos();
     }
 
-    // left += lidarCorrection(LEFT) + yawCorrection(LEFT);
-    // right += lidarCorrection(RIGHT) + yawCorrection(RIGHT);
-    // return { left, right }
-    auto ramp_scalar = ramp_up(cycle, 40);
-    return {(left * ramp_scalar), right * ramp_scalar};
+    return {compensate(left, right, cycle)};
 }
-// return scale(left * ramp_scalar, right * ramp_scalar);
+
+mtrn3100::Tuple<float, float> MicroMouse::compensate(float lSig, float rSig, int cycle)
+{
+
+    float ramp_scalar = ramp_up(cycle, 80);
+
+    float deltaL = (leftEncoderPos() - encoderInit[LEFT]);
+    float deltaR = (rightEncoderPos() - encoderInit[RIGHT]);
+    float compensate = motorComp.compute(deltaR, deltaL);
+
+    float left = (lSig + compensate) * ramp_scalar;
+
+    float right = rSig * ramp_scalar;
+
+    return {left, right};
+}
 
 // Non-class helpers
 
@@ -472,10 +485,10 @@ void MicroMouse::move()
     // calculate left and right signals
     auto signal = calculatePWM(mCurrentCommand.processLifespan);
 
-    printLeftRightArgs(leftEncoderPos(), rightEncoderPos(), "Encoder Pos");
-    printLeftRightArgs(encoderTarget[LEFT], encoderTarget[RIGHT], "Target Pos");
-    printLeftRightArgs(mtrn3100::get<LEFT>(signal), mtrn3100::get<RIGHT>(signal), "Signal");
-    Serial.println();
+    // printLeftRightArgs(leftEncoderPos(), rightEncoderPos(), "Encoder Pos");
+    // printLeftRightArgs(encoderTarget[LEFT], encoderTarget[RIGHT], "Target Pos");
+    // printLeftRightArgs(mtrn3100::get<LEFT>(signal), mtrn3100::get<RIGHT>(signal), "Signal");
+    // Serial.println();
 
     if ((signal == zero) && mCurrentCommand.processLifespan > 0)
     {
@@ -490,7 +503,6 @@ void MicroMouse::move()
     }
     else
     {
-
         setMotorPWM(signal);
     }
 }
@@ -745,7 +757,8 @@ void MicroMouse::debugMenu()
     String menu = "1: Lidars\n"
                   "2: IMU\n"
                   "3. Encoders\n"
-                  "4. Motors";
+                  "4. Motors\n"
+                  "5. Move";
     Serial.println(title);
     Serial.println(menu);
     while (!exit_flag)
@@ -792,6 +805,50 @@ void MicroMouse::debugMenu()
 
             while (motorDiagnostics())
                 ;
+            Serial.println("Select a new diagnostic target, or press E to exit");
+        }
+        else if (input == "5" || input.equalsIgnoreCase("move"))
+        {
+            Serial.println("Move test selected. Please supply a linear distance (in cm).");
+            while (!Serial.available() > 0)
+                ;
+            delay(5);
+            float dist = Serial.readString().toFloat();
+            moveTest(dist);
+
+            Serial.println("Select a new diagnostic target, or press E to exit");
+        }
+        else if (input == "6" || input.equalsIgnoreCase("tune pid") || input.equalsIgnoreCase("pid"))
+        {
+            Serial.println("Tune Error PID selected. Please supply PID gains P, I and D, separated by a comma.");
+            while (!Serial.available() > 0)
+                ;
+            delay(5);
+            String paramIn = Serial.readString();
+            float kp{0}, ki{1}, kd{2};
+            if (paramIn.length() > 1)
+            {
+                int firstComma = paramIn.indexOf(',');
+                int secondComma = paramIn.lastIndexOf(',');
+
+                if (firstComma == -1)
+                {
+                    kp = paramIn.toFloat();
+                }
+                else if (firstComma == secondComma)
+                {
+                    kp = paramIn.substring(0, firstComma).toFloat();
+                    ki = paramIn.substring(firstComma + 1).toFloat();
+                }
+                else if (firstComma != -1 && secondComma != -1)
+                {
+                    kp = paramIn.substring(0, firstComma).toFloat();
+                    ki = paramIn.substring(firstComma + 1, secondComma).toFloat();
+                    kd = paramIn.substring(secondComma + 1).toFloat();
+                }
+            }
+            motorComp.tune(kp, ki, kd);
+
             Serial.println("Select a new diagnostic target, or press E to exit");
         }
         else
@@ -922,7 +979,12 @@ void MicroMouse::runMotorDiagnosics(mtrn3100::Tuple<float, float> bounds, int st
     int j = 0;
     Serial.println("BEGIN DATA TRANSMISSION");
     Serial.println("motor.csv");
+    Serial.println("step,pwm_l,pwm_r,compensation,enc_l,enc_r");
     float compensation = 0;
+    float lsig = 0;
+    float rsig = 0;
+    float comp = 0;
+
     for (int i = 0; i < numSteps * 2; i++)
     {
         if (i < numSteps)
@@ -934,27 +996,20 @@ void MicroMouse::runMotorDiagnosics(mtrn3100::Tuple<float, float> bounds, int st
             signal = MicroMouse::signalGenerator(i - numSteps, numSteps, 3, minPWM, maxPWM);
         }
 
-        compensation = (signal > 0) ? compensation : -compensation;
+        comp = (signal > 0) ? comp : -comp;
 
-        mtrn3100::Tuple<float, float> sigs = normaliseSignals(signal + compensation, signal);
+        mtrn3100::Tuple<float, float> sigs = normaliseSignals(signal + comp, signal);
 
         setMotorPWM(sigs);
 
+        lsig = mtrn3100::get<0>(sigs);
+        rsig = mtrn3100::get<1>(sigs);
+
         lpos = leftEncoderPos() - initL;
         rpos = rightEncoderPos() - initR;
-        compensation = diff.compute(rpos, lpos);
+        comp = diff.compute(rpos, lpos);
 
-        Serial.print(i);
-        Serial.print(',');
-        Serial.print(mtrn3100::get<0>(sigs), 4);
-        Serial.print(',');
-        Serial.print(mtrn3100::get<1>(sigs), 4);
-        Serial.print(',');
-        Serial.print(compensation, 4);
-        Serial.print(',');
-        Serial.print(lpos, 4);
-        Serial.print(',');
-        Serial.println(rpos, 4);
+        printCSVData(5, i, lsig, rsig, comp, lpos, rpos);
 
         lprev = lpos;
         rprev = rpos;
@@ -963,6 +1018,64 @@ void MicroMouse::runMotorDiagnosics(mtrn3100::Tuple<float, float> bounds, int st
     }
     setMotorPWM({0, 0});
     Serial.println("END DATA TRANSMISSION");
+}
+
+bool MicroMouse::moveTest(float linearDist)
+{
+    Serial.println("BEGIN DATA TRANSMISSION");
+    Serial.println("move.csv");
+    Serial.println("step,pwm_l,pwm_r,comp_sig,enc_l,enc_r,target_left,target_right");
+    setLinearTarget(linearDist);
+    motorComp.reset();
+    int i = 0;
+    bool completed = false;
+    float lpos{0}, rpos{0}, lsig{0}, rsig{0}, csig{0};
+    float tposl = encoderTarget[LEFT];
+    float tposr = encoderTarget[RIGHT];
+
+    mtrn3100::Tuple<float, float> sig = {0, 0};
+    while (!completed)
+    {
+        sig = calculatePWM(i);
+        lsig = mtrn3100::get<0>(sig);
+        rsig = mtrn3100::get<1>(sig);
+        csig = motorComp.prev_signal;
+        lpos = leftEncoderPos();
+        rpos = rightEncoderPos();
+
+        setMotorPWM(sig);
+        printCSVData(8, i, lsig, rsig, csig, lpos, rpos, tposl, tposr);
+        completed = (((lsig == 0 && rsig == 0) && i > 0) || i > 1000);
+        i++;
+    }
+    Serial.println("END DATA TRANSMISSION");
+}
+
+void printCSVData(int numArgs, float first, ...)
+{
+    va_list args;
+    va_start(args, first);
+
+    // Print the first float
+    Serial.print(first, 0);
+
+    // Print the rest of the floats, separated by commas
+    for (int i = 1; i < numArgs; ++i)
+    {
+        // Print comma only if there are more values to print
+        if (i != numArgs)
+        {
+            Serial.print(",");
+        }
+        float value = va_arg(args, double);
+        Serial.print(value, 4);
+    }
+
+    // End variadic argument parsing
+    va_end(args);
+
+    // Print a newline character
+    Serial.println();
 }
 
 mtrn3100::Tuple<float, float> normaliseSignals(float leftSignal, float rightSignal)

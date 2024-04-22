@@ -67,6 +67,7 @@ private:
     MotorAssembly &rightDrive;
     mtrn3100::Tuple<VL6180X *, VL6180X *, VL53L0X *> &lidars;
     mtrn3100::GYRO *gyro;
+    mtrn3100::PIDController &motorComp;
     // mtrn3100::EKF &ekf;
 
     // Command registry: Stores commands as linked list
@@ -76,6 +77,7 @@ private:
     String mDataBuffer;
     String mSendBuffer;
     float encoderTarget[2];
+    float encoderInit[2];
     mazeInfo mMazeData;
     uint16_t lidarReadings[3][3];
     Coords globalCoords;
@@ -89,7 +91,7 @@ public:
     // debugging function for lidars
     void printLidars();
     // constructor
-    MicroMouse(MotorAssembly &leftDrive, MotorAssembly &rightDrive, lidarObj &Lidars, mtrn3100::GYRO *Gyro);
+    MicroMouse(MotorAssembly &leftDrive, MotorAssembly &rightDrive, lidarObj &Lidars, mtrn3100::GYRO *Gyro, mtrn3100::PIDController &compPID);
 
     float yawCorrection(int ID);
 
@@ -134,8 +136,13 @@ private:
     bool imuDiagnostics();
     bool encoderDiagnostics();
     bool motorDiagnostics();
+    bool moveTest(float linearDist);
     void runMotorDiagnosics(mtrn3100::Tuple<float, float> startVal, int step, int numSteps, float kp, float ki, float kd, float max);
     float signalGenerator(int step, int numSteps, int mode, float minVal, float maxVal);
+    void runMotorTest(float linearDistist);
+
+    mtrn3100::Tuple<float, float> getPWM(int mode, float target);
+    mtrn3100::Tuple<float, float> compensate(float left, float right, int cycle);
 };
 
 bool withinThreshold(float const distance);
@@ -146,3 +153,5 @@ mtrn3100::Tuple<float, float> scale(float leftSignal, float rightSignal);
 mtrn3100::Tuple<float, float> normaliseSignals(float leftSignal, float rightSignal);
 
 void printLeftRightArgs(float leftArg, float rightArg, String title);
+
+void printCSVData(int numArgs, float first, ...);
