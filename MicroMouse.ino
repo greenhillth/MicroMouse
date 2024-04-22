@@ -122,7 +122,7 @@ void setup()
   Wire.begin();
 
   // startBluetooth();
-  startLidars();
+  // startLidars();
 
   gyro.begin();
   gyro.reset();

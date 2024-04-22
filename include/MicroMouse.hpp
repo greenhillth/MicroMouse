@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+// #include <StandardCplusplus.h>
 #include <VL6180X.h>
 #include <VL53L0X.h>
 #include <Wire.h>
@@ -8,7 +9,7 @@
 #include "ITG3200.h"
 #include "Motor.hpp"
 #include "PIDController.hpp"
-#include "EKF.hpp"
+// #include "ExtendedKalmanFilter.hpp"
 #include "Tuple.hpp"
 #include "gyro.hpp"
 #include "LinkedList.hpp"
@@ -16,7 +17,8 @@
 #include "Graph.hpp"
 #include "mazeSolver.hpp"
 
-typedef mtrn3100::Tuple<mtrn3100::Motor *, mtrn3100::Encoder *, mtrn3100::PIDController, mtrn3100::PIDController> MotorAssembly;
+typedef mtrn3100::Tuple<mtrn3100::Motor *, mtrn3100::Encoder *, mtrn3100::PIDController, mtrn3100::PIDController>
+    MotorAssembly;
 typedef mtrn3100::Tuple<VL6180X *, VL6180X *, VL53L0X *> lidarObj;
 
 class MicroMouse;
@@ -132,6 +134,8 @@ private:
     bool imuDiagnostics();
     bool encoderDiagnostics();
     bool motorDiagnostics();
+    void runMotorDiagnosics(mtrn3100::Tuple<float, float> startVal, int step, int numSteps, float kp, float ki, float kd, float max);
+    float signalGenerator(int step, int numSteps, int mode, float minVal, float maxVal);
 };
 
 bool withinThreshold(float const distance);
@@ -139,5 +143,6 @@ float ramp_up(int cycle, double length);
 mtrn3100::Tuple<float, float> linear(float x1, float x2 = 0, bool equalDist = true);
 mtrn3100::Tuple<float, float> rotational(float h1);
 mtrn3100::Tuple<float, float> scale(float leftSignal, float rightSignal);
+mtrn3100::Tuple<float, float> normaliseSignals(float leftSignal, float rightSignal);
 
 void printLeftRightArgs(float leftArg, float rightArg, String title);

@@ -490,6 +490,7 @@ void MicroMouse::move()
     }
     else
     {
+
         setMotorPWM(signal);
     }
 }
@@ -744,7 +745,7 @@ void MicroMouse::debugMenu()
     String menu = "1: Lidars\n"
                   "2: IMU\n"
                   "3. Encoders\n"
-                  "4. Motors\n";
+                  "4. Motors";
     Serial.println(title);
     Serial.println(menu);
     while (!exit_flag)
@@ -789,7 +790,7 @@ void MicroMouse::debugMenu()
         {
             Serial.println("Motors selected. Printing motor information: (press any key to interrupt)");
 
-            while (encoderDiagnostics())
+            while (motorDiagnostics())
                 ;
             Serial.println("Select a new diagnostic target, or press E to exit");
         }
@@ -844,8 +845,242 @@ bool MicroMouse::encoderDiagnostics()
 
 bool MicroMouse::motorDiagnostics()
 {
-    delay(100);
-    return false;
+    float kp{5}, ki{0.5}, kd{4}, max{30};
+    Serial.println("Entered Motor Diagnostic mode. Press Q to quit.");
+    boolean exitFlag = false;
+    while (!exitFlag)
+    {
+        Serial.println("Type p to modify test params, or enter the starting and ending PWM values for the test, separated by a comma:");
+        while (Serial.available() == 0)
+            ;
+        delay(5);
+        String input = Serial.readString();
+        if (input.equals("q"))
+        {
+            exitFlag = true;
+            break;
+        }
+        else if (input.equals("p"))
+        {
+            Serial.println("Modifying test params. Current parameters:");
+            Serial.print("kp: ");
+            Serial.println(kp, 4);
+            Serial.print("ki: ");
+            Serial.println(ki, 4);
+            Serial.print("kd: ");
+            Serial.println(kd, 4);
+            Serial.println("Enter new values, separated by a comma, or leave blank to keep as is.");
+            while (Serial.available() == 0)
+                ;
+            delay(5);
+            String paramIn = Serial.readString();
+            if (paramIn.length() > 1)
+            {
+                int firstComma = paramIn.indexOf(',');
+                int secondComma = paramIn.lastIndexOf(',');
+
+                if (firstComma == -1)
+                {
+                    kp = paramIn.toFloat();
+                }
+                else if (firstComma == secondComma)
+                {
+                    kp = paramIn.substring(0, firstComma).toFloat();
+                    ki = paramIn.substring(firstComma + 1).toFloat();
+                }
+                else if (firstComma != -1 && secondComma != -1)
+                {
+                    kp = paramIn.substring(0, firstComma).toFloat();
+                    ki = paramIn.substring(firstComma + 1, secondComma).toFloat();
+                    kd = paramIn.substring(secondComma + 1).toFloat();
+                }
+            }
+            continue;
+        }
+        else
+        {
+
+            String left = input.substring(0, input.indexOf(',') - 1);
+            String right = input.substring(input.indexOf(',') + 1);
+
+            runMotorDiagnosics({left.toFloat(), right.toFloat()}, 1, 800, kp, ki, kd, max);
+        }
+    }
+}
+
+void MicroMouse::runMotorDiagnosics(mtrn3100::Tuple<float, float> bounds, int step, int numSteps, float kp, float ki, float kd, float max)
+{
+    mtrn3100::PIDController diff = mtrn3100::PIDController(kp, ki, kd, 0.0, 0.0, max, 0.1);
+
+    float initL = leftEncoderPos();
+    float initR = rightEncoderPos();
+
+    float lpos{0}, rpos{0}, lprev{0}, rprev{0}, deltaL{0}, deltaR{0};
+    float minPWM = mtrn3100::get<0>(bounds);
+    float maxPWM = mtrn3100::get<1>(bounds);
+    float signal = minPWM;
+    int j = 0;
+    Serial.println("BEGIN DATA TRANSMISSION");
+    Serial.println("motor.csv");
+    float compensation = 0;
+    for (int i = 0; i < numSteps * 2; i++)
+    {
+        if (i < numSteps)
+        {
+            signal = MicroMouse::signalGenerator(i, numSteps, 1, minPWM, maxPWM);
+        }
+        else
+        {
+            signal = MicroMouse::signalGenerator(i - numSteps, numSteps, 3, minPWM, maxPWM);
+        }
+
+        compensation = (signal > 0) ? compensation : -compensation;
+
+        mtrn3100::Tuple<float, float> sigs = normaliseSignals(signal + compensation, signal);
+
+        setMotorPWM(sigs);
+
+        lpos = leftEncoderPos() - initL;
+        rpos = rightEncoderPos() - initR;
+        compensation = diff.compute(rpos, lpos);
+
+        Serial.print(i);
+        Serial.print(',');
+        Serial.print(mtrn3100::get<0>(sigs), 4);
+        Serial.print(',');
+        Serial.print(mtrn3100::get<1>(sigs), 4);
+        Serial.print(',');
+        Serial.print(compensation, 4);
+        Serial.print(',');
+        Serial.print(lpos, 4);
+        Serial.print(',');
+        Serial.println(rpos, 4);
+
+        lprev = lpos;
+        rprev = rpos;
+
+        delay(10);
+    }
+    setMotorPWM({0, 0});
+    Serial.println("END DATA TRANSMISSION");
+}
+
+mtrn3100::Tuple<float, float> normaliseSignals(float leftSignal, float rightSignal)
+{
+    if (-255 > leftSignal && leftSignal > 255 && -255 > rightSignal && rightSignal > 255)
+    {
+        return {leftSignal, rightSignal};
+    }
+    bool negFlag = (leftSignal < 0) && (rightSignal < 0);
+    float overflow;
+    if (!negFlag)
+    {
+        // if left stronger than right
+        if (leftSignal > rightSignal)
+        {
+            overflow = (leftSignal < 255) ? 0 : leftSignal - 255;
+        }
+        else
+        {
+            overflow = (rightSignal < 255) ? 0 : rightSignal - 255;
+        }
+        return {leftSignal - overflow, rightSignal - overflow};
+    }
+    else
+    {
+        if (leftSignal < rightSignal)
+        {
+            overflow = (leftSignal > -255) ? 0 : -leftSignal + 255;
+        }
+        else
+        {
+            overflow = (rightSignal > -255) ? 0 : -rightSignal + 255;
+        }
+        return {leftSignal + overflow, rightSignal + overflow};
+    }
+}
+
+float MicroMouse::signalGenerator(int step, int numSteps, int mode, float minVal, float maxVal)
+{
+    int flip = numSteps / 4;
+    int doubleflip = flip / 2;
+    float increment = (maxVal - minVal) / flip;
+    switch (mode)
+    {
+    // ramp case
+    case 1:
+        if (step < flip)
+        {
+            return {minVal + increment * step};
+        }
+        else if (step < 2 * flip)
+        {
+            return {maxVal - increment * (step - flip)};
+        }
+        else if (step < 3 * flip)
+        {
+            return {-(minVal + increment * (step - 2 * flip))};
+        }
+        else
+        {
+            return {-maxVal + increment * (step - 3 * flip)};
+        }
+        break;
+    // alternating
+    case 2:
+        if (step < flip)
+        {
+            return {-maxVal};
+        }
+        else if (step < 2 * flip)
+        {
+            return {maxVal};
+        }
+        else if (step < 3 * flip)
+        {
+            return {-maxVal};
+        }
+        else
+        {
+            return {maxVal};
+        }
+        break;
+        // step
+    case 3:
+        if (step < doubleflip)
+        {
+            return {minVal};
+        }
+        else if (step < 2 * doubleflip)
+        {
+            return {minVal + (maxVal - minVal) / 2};
+        }
+        else if (step < 3 * doubleflip)
+        {
+            return {maxVal};
+        }
+        else if (step < 4 * doubleflip)
+        {
+            return {minVal};
+        }
+        if (step < 5 * doubleflip)
+        {
+            return {-minVal};
+        }
+        else if (step < 6 * doubleflip)
+        {
+            return {-(minVal + (maxVal - minVal) / 2)};
+        }
+        else if (step < 7 * doubleflip)
+        {
+            return {-maxVal};
+        }
+        else
+        {
+            return {-minVal};
+        }
+        break;
+    }
 }
 
 // calibrate the bot based on expected distance to walls
