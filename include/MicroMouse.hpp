@@ -9,6 +9,7 @@
 #include "ITG3200.h"
 #include "Motor.hpp"
 #include "PIDController.hpp"
+#include "differentialDrive.hpp"
 // #include "ExtendedKalmanFilter.hpp"
 #include "Tuple.hpp"
 #include "gyro.hpp"
@@ -17,8 +18,6 @@
 #include "Graph.hpp"
 #include "mazeSolver.hpp"
 
-typedef mtrn3100::Tuple<mtrn3100::Motor *, mtrn3100::Encoder *, mtrn3100::PIDController, mtrn3100::PIDController>
-    MotorAssembly;
 typedef mtrn3100::Tuple<VL6180X *, VL6180X *, VL53L0X *> lidarObj;
 
 class MicroMouse;
@@ -63,11 +62,10 @@ struct Coords
 class MicroMouse
 {
 private:
-    MotorAssembly &leftDrive;
-    MotorAssembly &rightDrive;
     mtrn3100::Tuple<VL6180X *, VL6180X *, VL53L0X *> &lidars;
-    mtrn3100::GYRO *gyro;
-    mtrn3100::PIDController &motorComp;
+    differentialDrive &drivetrain;
+    mtrn3100::GYRO &gyro;
+
     // mtrn3100::EKF &ekf;
 
     // Command registry: Stores commands as linked list
@@ -76,8 +74,6 @@ private:
     String motionPlan;
     String mDataBuffer;
     String mSendBuffer;
-    float encoderTarget[2];
-    float encoderInit[2];
     mazeInfo mMazeData;
     uint16_t lidarReadings[3][3];
     Coords globalCoords;
@@ -91,7 +87,7 @@ public:
     // debugging function for lidars
     void printLidars();
     // constructor
-    MicroMouse(MotorAssembly &leftDrive, MotorAssembly &rightDrive, lidarObj &Lidars, mtrn3100::GYRO *Gyro, mtrn3100::PIDController &compPID);
+    MicroMouse(differentialDrive &driveTrain, lidarObj &Lidars, mtrn3100::GYRO &Gyro, mtrn3100::PIDController &compPID);
 
     float yawCorrection(int ID);
 
@@ -109,12 +105,8 @@ public:
     mtrn3100::Tuple<float, float> calculatePWM(int cycle);
     mtrn3100::Tuple<float, float> calculateRotationalPWM(int cycle);
 
-    void setLinearTarget(float distance);
-    float lidarCorrection(int id);
-
     int writeBTtransmission();
 
-    void setMotorPWM(mtrn3100::Tuple<float, float> signal);
     // commands
     void init();
     void idle();
@@ -127,6 +119,7 @@ public:
     void solve_maze();
     void explore_maze();
 
+    // other stuff
     void run();
     void debugMenu();
     void ASCIItoMotionPlan();
