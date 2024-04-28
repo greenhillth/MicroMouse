@@ -22,6 +22,12 @@ def read_serial(port, baud_rate):
         elif 'END DATA TRANSMISSION' in line:
             file = logFile
             mode = LOGGING
+        elif 'BT TRANSMISSION' in line:
+            while True:
+                raw_bytes = ser.read(10)  # Adjust the number of bytes to read as per your requirement
+        
+                # Print the raw bytes in hexadecimal representation
+                print("Received:", raw_bytes.hex())
         
         
         if mode==LOGGING:

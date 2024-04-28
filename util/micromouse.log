@@ -1,0 +1,49 @@
+henlo
+Starting Left Sensor...
+sensorL I2C address: 0x20
+Starting Right sensor...
+sensorR I2C address: 0x22
+sensorF I2C address: 0x1
+Sensors ready!
+Initializing I2C devices...
+Testing device connections...
+ITG3200 connection successful
+Device connected!
+Initialised debug menu. Please select sensor you'd like to check:
+1: Lidars
+2: IMU
+3. Encoders
+4. Motors
+5. Move
+6. Tune PID
+7. Bluetooth
+Move test selected. Please supply a linear distance (in cm).
+BEGIN DATA TRANSMISSION
+END DATA TRANSMISSION
+Select a new diagnostic target, or press E to exit
+1: Lidars
+2: IMU
+3. Encoders
+4. Motors
+5. Move
+6. Tune PID
+7. Bluetooth
+henlo
+Starting Left Sensor...
+sensorL I2C address: 0x20
+Starting Right sensor...
+sensorR I2C address: 0x22
+sensorF I2C address: 0x1
+Sensors ready!
+Initializing I2C devices...
+Testing device connections...
+ITG3200 connection successful
+Device connected!
+Initialised debug menu. Please select sensor you'd like to check:
+1: Lidars
+2: IMU
+3. Encoders
+4. Motors
+5. Move
+6. Tune PID
+7. Bluetooth

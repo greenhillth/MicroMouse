@@ -123,7 +123,7 @@ void setup()
   Serial.println("henlo");
   Wire.begin();
 
-  // startBluetooth();
+  startBluetooth();
   startLidars();
 
   gyro.begin();

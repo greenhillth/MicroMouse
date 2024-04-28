@@ -758,7 +758,9 @@ void MicroMouse::debugMenu()
                   "2: IMU\n"
                   "3. Encoders\n"
                   "4. Motors\n"
-                  "5. Move";
+                  "5. Move\n"
+                  "6. Tune PID\n"
+                  "7. Bluetooth";
     Serial.println(title);
     Serial.println(menu);
     while (!exit_flag)
@@ -850,6 +852,19 @@ void MicroMouse::debugMenu()
             motorComp.tune(kp, ki, kd);
 
             Serial.println("Select a new diagnostic target, or press E to exit");
+        }
+        else if (input == "7" || input.equalsIgnoreCase("bluetooth"))
+        {
+            Serial.println("Bluetooth connected. Printing raw bluetooth data:");
+            while (!Serial.available() > 0)
+            {
+                int incomingByte = Serial3.read();
+                while (incomingByte != -1)
+                {
+                    Serial.println(incomingByte, HEX);
+                    incomingByte = Serial3.read();
+                }
+            }
         }
         else
         {
