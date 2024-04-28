@@ -1,7 +1,7 @@
 #include "../include/differentialDrive.hpp"
 
 // constructor
-differentialDrive::differentialDrive(coords initPose) : currentPos(initPose)
+differentialDrive::differentialDrive(coords initPose, driveAssembly &left, driveAssembly &right) : currentPos(initPose), left(left), right(right)
 {
     basePWM[2][2] = {};
 }
@@ -32,7 +32,7 @@ bool differentialDrive::calibrate(mtrn3100::GYRO &imu)
 }
 
 // move to position, return true when complete
-bool differentialDrive::move(coords dest)
+bool differentialDrive::move(int cycle, coords dest)
 {
     if (dest == currentPos)
     {
@@ -44,7 +44,7 @@ bool differentialDrive::move(coords dest)
         this->movement = movePlan(currentPos, dest);
         movement.currentStep = INITR;
     case INITR:
-        if (!rotate(movement.initR))
+        if (!rotate(cycle, movement.initR))
         {
             break;
         }
@@ -53,7 +53,11 @@ bool differentialDrive::move(coords dest)
             movement.currentStep = MOVE;
         }
     case MOVE:
-        if (!linearMovement(movement.lineardist))
+        if (cycle == 0)
+        {
+            encoderTargets = targets(movement.lineardist, left.encoder.position, right.encoder.position);
+        }
+        if (!linearMovement(cycle))
         {
             break;
         }
@@ -62,7 +66,7 @@ bool differentialDrive::move(coords dest)
             movement.currentStep = FINALR;
         }
     case FINALR:
-        if (!rotate(movement.finalR))
+        if (!rotate(cycle, movement.finalR))
         {
             break;
         }
@@ -79,37 +83,42 @@ bool differentialDrive::move(coords dest)
 
     polar diff = dest - currentPos;
 
-    currentPos = currentPos.update(); // TODO - implement EKF update step here
+    // currentPos = currentPos.update(); // TODO - implement EKF update step here
 
     return false;
 }
 
 // move to waypoints, return true when all moves complete
-bool differentialDrive::move(coords dest1...)
+bool differentialDrive::move(int cycle, coords dest1...)
 {
 }
-
-bool differentialDrive::rotate(float degrees)
+bool differentialDrive::move(int cycle, float linearDist)
 {
+    if (cycle == 0)
+    {
+        Serial.println("Targets set");
+        this->encoderTargets = targets(linearDist, left.encoder.position, right.encoder.position);
+    }
+    return (linearMovement(linearDist));
 }
 
-bool differentialDrive::linearMovement(float lDist)
+bool differentialDrive::rotate(int cycle, float degrees)
+{
+    return true;
+}
+
+bool differentialDrive::linearMovement(int cycle)
 {
     // Set encoder targets if not set already
     float currentL = left.encoder.position;
     float currentR = right.encoder.position;
-
-    if (!encoderTargets.set)
-    {
-        this->encoderTargets = targets(lDist, left.encoder.position, right.encoder.position);
-    }
 
     // Calculate signal
     mtrn3100::Tuple<float, float> signal;
     float sp[2] = {encoderTargets.left, encoderTargets.right};
     float curr[2] = {currentL, currentR};
 
-    signal = calculateSignal(curr, sp);
+    signal = calculateSignal(cycle, curr, sp);
     setPWM(signal);
     // return true if movement complete and clear targets
     if (mtrn3100::get<LEFT>(signal) == 0 && mtrn3100::get<RIGHT>(signal) == 0)
@@ -120,7 +129,7 @@ bool differentialDrive::linearMovement(float lDist)
     return false;
 }
 
-mtrn3100::Tuple<float, float> differentialDrive::calculateSignal(float current[2], float setpoint[2])
+mtrn3100::Tuple<float, float> differentialDrive::calculateSignal(int cycle, float current[2], float setpoint[2])
 {
     float lSig = left.pidLin.compute(setpoint[LEFT], current[LEFT]);
     float rSig = right.pidLin.compute(setpoint[RIGHT], current[RIGHT]);
@@ -144,11 +153,33 @@ mtrn3100::Tuple<float, float> differentialDrive::calculateSignal(float current[2
         (negative) ? rSig += compensation : rSig -= compensation;
     }
 
-    return {lSig, rSig};
+    return {lSig * ramp_up(cycle, 60), rSig * ramp_up(cycle, 60)};
 }
+
+/**
+ * @brief Sets left and right motor PWM values.
+ * @param signal <float, float> Tuple containing left and right signals.
+ * @return void.
+ */
 
 void differentialDrive::setPWM(mtrn3100::Tuple<float, float> signal)
 {
     left.motor.setPWM(mtrn3100::get<LEFT>(signal));
     right.motor.setPWM(mtrn3100::get<RIGHT>(signal));
+}
+
+float ramp_up(int cycle, double length)
+{
+    if (cycle >= length)
+    {
+        return 1;
+    }
+    // input validation
+    else if (cycle < 0)
+    {
+        Serial.println("critical error in ramp_up function");
+        return 0;
+    }
+
+    return (((1 / length) * cycle) * ((1 / length) * cycle));
 }

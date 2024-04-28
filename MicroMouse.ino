@@ -50,8 +50,10 @@ mtrn3100::PIDController pidRotationalR(.25, 0, 0, 55, 0, 90, .1);
 
 mtrn3100::PIDController compPID(20, 1.5, 0.01, 0.0, 0, 20, 0);
 
-MotorAssembly leftAssembly(&l_motor, &l_encoder, pidLinearL, pidRotationalL);
-MotorAssembly rightAssembly(&r_motor, &r_encoder, pidLinearR, pidRotationalR);
+driveAssembly leftDrive(l_motor, l_encoder, pidLinearL, pidRotationalL);
+driveAssembly rightDrive(r_motor, r_encoder, pidLinearR, pidRotationalR);
+
+differentialDrive driveTrain(coords(0, 0, 0), leftDrive, rightDrive);
 
 mtrn3100::GYRO gyro(0);
 
@@ -114,7 +116,7 @@ void startBluetooth()
   Serial3.println("starting");
 }
 
-MicroMouse *Robot = new MicroMouse(leftAssembly, rightAssembly, lidars, &gyro, compPID);
+MicroMouse *Robot = new MicroMouse(driveTrain, lidars, gyro);
 
 void setup()
 {

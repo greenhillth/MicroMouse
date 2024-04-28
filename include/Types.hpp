@@ -88,7 +88,6 @@ Movement process:
 constexpr int NOPLAN{-1};
 constexpr int COMPLETE{0};
 constexpr int INITR{1};
-constexpr int MOVE{2};
 constexpr int FINALR{3};
 
 struct movePlan

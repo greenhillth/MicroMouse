@@ -87,7 +87,7 @@ public:
     // debugging function for lidars
     void printLidars();
     // constructor
-    MicroMouse(differentialDrive &driveTrain, lidarObj &Lidars, mtrn3100::GYRO &Gyro, mtrn3100::PIDController &compPID);
+    MicroMouse(differentialDrive &driveTrain, lidarObj &Lidars, mtrn3100::GYRO &Gyro);
 
     float yawCorrection(int ID);
 

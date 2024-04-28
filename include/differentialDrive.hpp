@@ -21,15 +21,20 @@ struct driveAssembly
     mtrn3100::PIDController &pidRot;
     mtrn3100::Encoder &encoder;
 
-    driveAssembly();
+    driveAssembly(mtrn3100::Motor &motor, mtrn3100::Encoder &encoder,
+                  mtrn3100::PIDController &pidLin, mtrn3100::PIDController &pidRot)
+        : motor(motor), encoder(encoder), pidLin(pidLin), pidRot(pidRot){};
 };
 class differentialDrive
 {
 public:
-    differentialDrive(coords initPose);
+    differentialDrive(coords initPose, driveAssembly &left, driveAssembly &right);
     bool calibrate(mtrn3100::GYRO &imu);
-    bool move(coords dest);
-    bool move(coords dest1...);
+    bool move(int cycle, coords dest);
+    bool move(int cycle, coords dest1...);
+    bool move(int cycle, float dist);
+    float leftEncoderPos() { return left.encoder.position; };
+    float rightEncoderPos() { return right.encoder.position; };
 
 private:
     coords currentPos;
@@ -42,11 +47,12 @@ private:
     float targetRotation;
     targets encoderTargets;
 
-    mtrn3100::Tuple<float, float> calculateSignal(float current[2], float setpoint[2]);
+    mtrn3100::Tuple<float, float> calculateSignal(int cycle, float current[2], float setpoint[2]);
     void setPWM(mtrn3100::Tuple<float, float>);
 
-    bool rotate(float degrees);
-    bool linearMovement(float lDist);
+    bool linearMovement(int cycle);
+    bool rotate(int cycle, float degrees);
+    float ramp_up(int cycle, double length);
 };
 
 /*

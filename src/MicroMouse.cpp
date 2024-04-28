@@ -146,9 +146,9 @@ Coords Coords::update(mtrn3100::GYRO &gyro)
 /**
  * @brief Constructor which initialises a robot instance.
  */
-MicroMouse::MicroMouse(MotorAssembly &leftDrive, MotorAssembly &rightDrive, lidarObj &lidars, mtrn3100::GYRO *gyro, mtrn3100::PIDController &compPID)
-    : leftDrive(leftDrive), rightDrive(rightDrive), lidars(lidars), gyro(gyro), encoderTarget({0.0, 0.0}),
-      mCurrentCommand(Command()), globalCoords(Coords()), solveMode(INIT), motorComp(compPID)
+MicroMouse::MicroMouse(differentialDrive &driveTrain, lidarObj &lidars, mtrn3100::GYRO &gyro)
+    : drivetrain(driveTrain), lidars(lidars), gyro(gyro),
+      mCurrentCommand(Command()), globalCoords(Coords()), solveMode(INIT)
 {
     mDataBuffer = String();
     mSendBuffer = String();
@@ -160,8 +160,8 @@ MicroMouse::MicroMouse(MotorAssembly &leftDrive, MotorAssembly &rightDrive, lida
  * @brief Getters which retrive encoder positions.
  * @return float - encoder position.
  */
-float MicroMouse::leftEncoderPos() { return mtrn3100::get<ENCODER>(leftDrive)->position; }
-float MicroMouse::rightEncoderPos() { return mtrn3100::get<ENCODER>(rightDrive)->position; }
+float MicroMouse::leftEncoderPos() { return drivetrain.leftEncoderPos(); };
+float MicroMouse::rightEncoderPos() { return drivetrain.rightEncoderPos(); };
 
 // TODO - fix this function - using switch-cases because ::get requires STATIC member fml
 /**
@@ -213,54 +213,7 @@ void MicroMouse::printLidars()
     Serial.println('\r');
 }
 
-// calculate PID signal based on current pos
-float MicroMouse::leftPIDsignal() { return mtrn3100::get<PID1>(leftDrive).compute(encoderTarget[LEFT], leftEncoderPos()); }
-float MicroMouse::rightPIDsignal() { return mtrn3100::get<PID1>(rightDrive).compute(encoderTarget[RIGHT], rightEncoderPos()); }
-float MicroMouse::leftTurnPIDsignal() { return (-1 * mtrn3100::get<PID2>(leftDrive).compute(encoderTarget[0], gyro->read())); }
-float MicroMouse::rightTurnPIDsignal() { return mtrn3100::get<PID2>(rightDrive).compute(encoderTarget[0], gyro->read()); }
-
-/**
- * @brief Sets left and right motor PWM values.
- * @param signal <float, float> Tuple containing left and right signals.
- * @return void.
- */
-void MicroMouse::setMotorPWM(mtrn3100::Tuple<float, float> signal)
-{
-    mtrn3100::get<MOTOR>(leftDrive)->setPWM(mtrn3100::get<LEFT>(signal));
-    mtrn3100::get<MOTOR>(rightDrive)->setPWM(mtrn3100::get<RIGHT>(signal));
-}
-
-/**
- * @brief Calculates correction value for lidar.
- * @param id int specifying LEFT, RIGHT or FRONT.
- * @return void.
- */
-float MicroMouse::lidarCorrection(int id)
-{
-    float correction{0};
-    uint16_t left{lidarReading(LEFT)};
-    uint16_t right{lidarReading(RIGHT)};
-
-    if (withinThreshold(left) && withinThreshold(right))
-    {
-        float diff = static_cast<float>(right) - static_cast<float>(left);
-        if (abs(diff) > 10 && abs(diff) < 50)
-        {
-            correction = static_cast<float>(diff);
-            correction *= lidarScalar;
-        }
-    }
-
-    return {correction * (-1 * id)};
-}
-
-void MicroMouse::setLinearTarget(float distance)
-{
-    encoderTarget[LEFT] = leftEncoderPos() + mtrn3100::get<LEFT>(linear(distance));
-    encoderTarget[RIGHT] = rightEncoderPos() + mtrn3100::get<RIGHT>(linear(distance));
-}
-
-float MicroMouse::yawCorrection(int ID) { return (-1 * ID) * (gyro->read() * yawScalar); }
+float MicroMouse::yawCorrection(int ID) { return (-1 * ID) * (gyro.read() * yawScalar); }
 
 // TODO - rework using arduino constrain functions
 // Reduces output of stronger motor and clamps to [-255, 255]
@@ -285,44 +238,6 @@ mtrn3100::Tuple<float, float> scale(float leftSignal, float rightSignal)
 
     return {signals[LEFT], signals[RIGHT]};
 }
-
-//  Calculates required PWM value to encoderTarget setpoint stored in memory
-mtrn3100::Tuple<float, float> MicroMouse::calculatePWM(int cycle)
-{
-    auto left = leftPIDsignal();
-    auto right = rightPIDsignal();
-
-    if ((left == 0) && (right == 0))
-    {
-        return {0, 0};
-    }
-
-    if (cycle == 0)
-    {
-        gyro->reset();
-        encoderInit[LEFT] = leftEncoderPos();
-        encoderInit[RIGHT] = rightEncoderPos();
-    }
-
-    return {compensate(left, right, cycle)};
-}
-
-mtrn3100::Tuple<float, float> MicroMouse::compensate(float lSig, float rSig, int cycle)
-{
-
-    float ramp_scalar = ramp_up(cycle, 80);
-
-    float deltaL = (leftEncoderPos() - encoderInit[LEFT]);
-    float deltaR = (rightEncoderPos() - encoderInit[RIGHT]);
-    float compensate = motorComp.compute(deltaR, deltaL);
-
-    float left = (lSig + compensate) * ramp_scalar;
-
-    float right = rSig * ramp_scalar;
-
-    return {left, right};
-}
-
 // Non-class helpers
 
 // Compute left and right wheel position changes for pure translational movement.
@@ -378,8 +293,6 @@ void Command::print()
 void MicroMouse::reset()
 {
     mDataBuffer = String();
-    encoderTarget[0] = 0.0;
-    encoderTarget[1] = 0.0;
 }
 
 mtrn3100::Tuple<float, float> MicroMouse::calculateRotationalPWM(int cycle)
@@ -476,21 +389,9 @@ void MicroMouse::idle()
 
 void MicroMouse::move()
 {
-    // Set targets if first iter
-    if (mCurrentCommand.processLifespan == 0)
-    {
-        Serial.println("Targets set");
-        setLinearTarget(mCurrentCommand.mfloatData);
-    }
-    // calculate left and right signals
-    auto signal = calculatePWM(mCurrentCommand.processLifespan);
-
-    // printLeftRightArgs(leftEncoderPos(), rightEncoderPos(), "Encoder Pos");
-    // printLeftRightArgs(encoderTarget[LEFT], encoderTarget[RIGHT], "Target Pos");
-    // printLeftRightArgs(mtrn3100::get<LEFT>(signal), mtrn3100::get<RIGHT>(signal), "Signal");
-    // Serial.println();
-
-    if ((signal == zero) && mCurrentCommand.processLifespan > 0)
+    bool completed{
+        drivetrain.move(mCurrentCommand.processLifespan, mCurrentCommand.mfloatData)};
+    if (completed)
     {
         CommandRegistry.push_front(IDLE);
         mCurrentCommand.completed = true;
@@ -500,10 +401,6 @@ void MicroMouse::move()
             globalCoords.y += mCurrentCommand.mfloatData * globalCoords.headingSin();
         }
         delay(1000);
-    }
-    else
-    {
-        setMotorPWM(signal);
     }
 }
 
